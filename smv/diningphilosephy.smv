@@ -1,0 +1,91 @@
+MODULE main
+     VAR
+       phil1 : process philosopher(fork1,fork2,tableNum,1);
+       phil2 : process philosopher(fork2,fork3,tableNum,2);
+       phil3 : process philosopher(fork3,fork4,tableNum,3);
+       phil4 : process philosopher(fork4,fork5,tableNum,4);
+       phil5 : process philosopher(fork5,fork1,tableNum,5);
+
+       --mutex to each go intern so that there is no deadlock
+       tableNum   : {0,1,2,3,4,5};
+       --fork can be taken by left, right or left on the table
+       fork1 : {left,table,right};
+       fork2 : {left,table,right};
+       fork3 : {left,table,right};
+       fork4 : {left,table,right};
+       fork5 : {left,table,right};
+     ASSIGN
+       --intalize all the forks to be on the table
+       init(fork1) := table;
+       init(fork2) := table;
+       init(fork3) := table;
+       init(fork4) := table;
+       init(fork5) := table;
+
+       --initalize the mutex to free
+       init(tableNum) := 0;
+  --fairness of philosephers eating infinitly often
+  --thinking is equal to hungry in this model 
+  FAIRNESS (phil1.state = think | phil2.state = think | phil3.state = think | phil4.state = think | phil5.state = think)
+  --fairness of philosephers eating they will eventually be done 
+  FAIRNESS ((phil1.state != eat) | (phil2.state != eat) | (phil3.state != eat) | (phil4.state != eat) | (phil5.state != eat))
+
+SPEC -- no starvation Should be True
+  AG (EF(phil1.state = eat) & EF(phil2.state = eat) & EF(phil3.state = eat) & EF(phil4.state = eat) & EF(phil5.state = eat))
+SPEC -- if one philosepher the neighbor philosephor are not eating Should be True
+  (AG ((phil1.state = eat -> ((phil2.state = done | phil2.state = think) & (phil5.state = done | phil5.state = think))) &
+  (phil2.state = eat -> ((phil1.state = done | phil1.state = think) & (phil3.state = done | phil3.state = think))) &
+  (phil3.state = eat -> ((phil2.state = done | phil2.state = think) & (phil4.state = done | phil4.state = think))) &
+  (phil4.state = eat -> ((phil3.state = done | phil3.state = think) & (phil5.state = done | phil5.state = think))) &
+  (phil5.state = eat -> ((phil4.state = done | phil4.state = think) & (phil1.state = done | phil1.state = think)))))
+SPEC --no deadlock Should be False
+  (AG EF((fork1 = left) & (fork2 = left) & (fork3 = left) & (fork4 = left) & (fork5 = left)) |
+  ((fork1 = right) & (fork2 = right) & (fork3 = right) & (fork4 = right) & (fork5 = right)))
+SPEC --no hogging forks Should be True
+  (E [fork1 = table U (fork1 = left | fork1 = right)] &
+  E[fork2 = table U (fork2 = left | fork2 = right)] &
+  E[fork3 = table U (fork3 = left | fork3 = right)] &
+  E[fork4 = table U (fork4 = left | fork4 = right)] &
+  E[fork5 = table U (fork5 = left | fork5 = right)])
+
+MODULE philosopher(leftFork,rightFork,tableNum,philosepherNum)
+     VAR
+      state : {think, eat, done};
+
+     ASSIGN
+      --initial state of the philosepher
+      init(state) := think;
+
+      next(tableNum)  :=
+         case
+           (tableNum = 0) & (state = think) & (leftFork = table) & (rightFork = table) : philosepherNum; 
+           (tableNum = philosepherNum) & (state = eat) : 0; 
+           TRUE: tableNum;
+         esac;
+
+      --change leftfork
+      next(leftFork) :=
+        case
+        (tableNum = philosepherNum) & 
+        (state = think) & (leftFork = table) : {left, table};  
+        (state = done) & (leftFork = left) : table;
+        TRUE: leftFork;
+       esac; 
+       --change rightfork
+       next(rightFork) :=
+        case
+        (tableNum = philosepherNum) & 
+        (state = think) & (rightFork = table) : {right, table}; 
+        (state = done) & (rightFork = right)  : table;
+        TRUE: rightFork;
+       esac;
+       --change state of philosepher
+       next(state) := 
+        case 
+        state = think & 
+        leftFork = left & rightFork = right : eat;
+        !(tableNum = philosepherNum) & 
+        state = eat : {eat,done};
+        state = done & !(leftFork = left) & !(rightFork = right) : think;
+        TRUE:state;
+        esac;
